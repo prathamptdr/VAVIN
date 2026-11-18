@@ -1,0 +1,640 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAVIN — Prototype</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<style>
+:root {
+  --bg:#090d0b;
+  --panel:#111815;
+  --line:#26332c;
+  --text:#edf2ed;
+  --muted:#829087;
+  --accent:#c9f36b;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.app{max-width:1280px;margin:auto;padding:28px 34px}
+header{display:flex;justify-content:space-between;align-items:center;
+  padding-bottom:20px;border-bottom:1px solid var(--line)}
+.logo{font-size:17px;font-weight:800;letter-spacing:.22em}
+.logo span{color:var(--accent)}
+.live{font-size:10px;letter-spacing:.16em;color:var(--muted)}
+.indicator{display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:#657068;margin-right:8px}
+.indicator.active{background:var(--accent);box-shadow:0 0 10px #c9f36b}
+.intro{padding:34px 0 25px}
+.eyebrow{font-size:10px;color:var(--accent);letter-spacing:.2em}
+h1{font-size:clamp(30px,4vw,43px);font-weight:600;
+  letter-spacing:-.055em;line-height:1.1;margin:12px 0 8px}
+.intro p{font-size:13px;color:var(--muted);margin:0}
+.workspace{display:grid;grid-template-columns:1.45fr .8fr;gap:15px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.panel-head{padding:15px 17px;border-bottom:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center}
+.panel-head b{font-size:10px;letter-spacing:.14em}
+.panel-head span{font-size:9px;color:var(--muted)}
+.camera{position:relative;background:#050806;aspect-ratio:16/10;min-height:270px}
+video,canvas#overlay{position:absolute;width:100%;height:100%;inset:0;
+  object-fit:cover;transform:scaleX(-1)}
+#overlay{z-index:2}
+.placeholder{position:absolute;inset:0;display:grid;place-content:center;
+  text-align:center;color:var(--muted);font-size:12px;gap:9px}
+.placeholder strong{color:var(--text);font-size:13px}
+.camera-actions{padding:13px 15px;display:flex;justify-content:space-between;
+  align-items:center;gap:10px}
+button{border:0;border-radius:6px;padding:11px 16px;font-size:10px;
+  font-weight:700;cursor:pointer;background:var(--accent);color:#10150b}
+button.secondary{background:#202a24;color:var(--text);
+  border:1px solid #39463d}
+button:disabled{opacity:.4;cursor:not-allowed}
+.actions{display:flex;gap:8px}
+.note{font-size:9px;color:var(--muted)}
+.side{display:flex;flex-direction:column;gap:13px}
+.measure{padding:19px}
+.label{font-size:9px;color:var(--muted);letter-spacing:.15em}
+.number{font-size:54px;font-weight:600;letter-spacing:-.07em;
+  margin-top:10px;line-height:1.05;font-variant-numeric:tabular-nums}
+.unit{font-size:11px;color:var(--muted);margin-top:5px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{padding:14px}
+.metric strong{display:block;font-size:22px;font-weight:600;margin-top:8px}
+.chart-panel{padding:15px}
+.chart-title{font-size:10px;letter-spacing:.13em}
+#chart{width:100%;height:170px;display:block;margin-top:12px}
+.threeD-view{height:270px;background:radial-gradient(ellipse at center,#17221b 0%,#080d0a 72%);position:relative}
+#worldCanvas{width:100%;height:100%;display:block}
+.calibration{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 15px;border-top:1px solid var(--line)}
+.calibration input{width:110px;background:#080d0a;color:var(--text);border:1px solid #39463d;border-radius:6px;padding:10px}
+.calibration small{color:var(--muted);font-size:10px;flex-basis:100%}
+.threeD-meta{display:flex;justify-content:space-between;gap:12px;padding:10px 15px;color:var(--muted);font-size:9px;border-top:1px solid var(--line)}
+.chart-legend{font-size:9px;color:var(--muted);display:flex;justify-content:space-between}
+.footer{display:flex;justify-content:space-between;gap:15px;
+  padding-top:18px;color:#657169;font-size:9px;letter-spacing:.1em}
+@media(max-width:850px){
+ .app{padding:20px}.workspace{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+ .camera-actions{align-items:flex-start;flex-direction:column}
+ .number{font-size:45px}.footer{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo">VAVIN<span>.</span></div>
+  <div class="live"><i class="indicator" id="indicator"></i><span id="status">STANDBY</span></div>
+</header>
+
+<section class="intro">
+  <div class="eyebrow">PROTOTYPE / LIVE EXPERIMENT</div>
+  <h1>Physical interaction.<br>Measured in motion.</h1>
+  <p>Real-time 2D hand tracking with model-estimated 3D spatial landmarks and measurement.</p>
+</section>
+
+<section class="workspace">
+  <div class="panel">
+    <div class="panel-head">
+      <b>LIVE CAMERA</b>
+      <span id="tracking">WAITING FOR INPUT</span>
+    </div>
+    <div class="camera" id="camera">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="placeholder" id="placeholder">
+        <span style="font-size:28px;color:var(--accent)">⌖</span>
+        <strong>Camera feed</strong>
+        <span>Start capture to begin tracking</span>
+      </div>
+    </div>
+    <div class="camera-actions">
+      <div class="note" id="note">Live hand tracking · Browser processing</div>
+      <div class="actions">
+        <button id="start">Start capture</button>
+        <button id="stop" class="secondary" disabled>Stop</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:15px">
+      <div class="panel-head">
+        <b>3D HAND RECONSTRUCTION</b>
+        <span id="worldStatus">WAITING FOR 3D DATA</span>
+      </div>
+      <div class="threeD-view">
+        <canvas id="worldCanvas"></canvas>
+      </div>
+      <div class="calibration">
+        <label for="palmReference" class="label">YOUR PALM WIDTH (MM)</label>
+        <input id="palmReference" type="number" min="30" max="150" step="0.5" placeholder="e.g. 85">
+        <button id="calibrate" class="secondary" type="button">Calibrate scale</button>
+        <button id="clearCalibration" class="secondary" type="button">Reset</button>
+        <small id="calibrationStatus">Optional: measure across your palm at the knuckles with a ruler. Calibration adjusts model scale; it does not guarantee laboratory accuracy.</small>
+      </div>
+      <div class="threeD-meta">
+        <span>21 model-estimated spatial landmarks · Not a full object scan</span>
+        <span>RELATIVE 3D GEOMETRY · SCALE NEEDS VALIDATION</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="panel measure">
+      <div class="label">THUMB–INDEX GAP</div>
+      <div class="number" id="gap">—</div>
+      <div class="unit">Pixels · 2D image-space distance</div>
+    </div>
+    <div class="panel measure">
+      <div class="label">3D THUMB–INDEX DISTANCE</div>
+      <div class="number" id="gap3d">—</div>
+      <div class="unit" id="gap3dUnit">Model-estimated mm · uncalibrated</div>
+    </div>
+
+    <div class="metrics">
+      <div class="panel metric">
+  <div class="label">INTERACTION STATE</div>
+  <strong id="interactionState">WAITING</strong>
+  <div class="unit">Distance-based estimate</div>
+</div>
+<div class="panel metric">
+  <div class="label">SIGNAL QUALITY</div>
+  <strong id="signalQuality">—</strong>
+  <div class="unit">Hand detection score</div>
+</div>
+      <div class="panel metric">
+        <div class="label">NORMALISED GAP</div>
+        <strong id="normal">—</strong>
+        <div class="unit">% of palm width</div>
+      </div>
+      <div class="panel metric">
+        <div class="label">MODEL SCORE</div>
+        <strong id="confidence">—</strong>
+        <div class="unit">Detection confidence</div>
+      </div>
+      <div class="panel metric">
+        <div class="label">SAMPLES</div>
+        <strong id="samples">0</strong>
+      </div>
+      <div class="panel metric">
+        <div class="label">DURATION</div>
+        <strong id="duration">00:00</strong>
+      </div>
+    </div>
+    <div class="panel chart-panel">
+  <div class="chart-title">INTERACTION EVENT LOG</div>
+  <div id="eventLog" style="margin-top:13px;font-size:10px;color:var(--muted);line-height:2">
+    <div>Waiting for interaction data…</div>
+  </div>
+</div>
+
+    <div class="panel chart-panel">
+      <div class="chart-title">THUMB–INDEX TRACE</div>
+      <canvas id="chart" width="700" height="260"></canvas>
+      <div class="chart-legend">
+        <span>EARLIER</span><span>TIME →</span><span>LIVE</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="footer">
+  <span>VAVIN · PHYSICAL INTERACTION PROTOTYPE</span>
+  <span>2D + ESTIMATED 3D / MOTION DATA</span>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const video=$("video"),overlay=$("overlay"),ctx=overlay.getContext("2d");
+const chart=$("chart"),g=chart.getContext("2d");
+
+let hands,stream,running=false,busy=false,raf;
+let startTime=0,lastSample=0,filtered=null,lastRaw=null;
+let samples=[];
+let worldPoints=null, smoothedWorld=null, calibrationScale=null;
+let interactionState="WAITING";
+let previousFiltered=null;
+let releaseUntil=0;
+
+function logEvent(message){
+  const elapsed=Math.floor((performance.now()-startTime)/1000);
+  const time=String(Math.floor(elapsed/60)).padStart(2,"0")+":"+
+             String(elapsed%60).padStart(2,"0");
+  const log=$("eventLog");
+  const item=document.createElement("div");
+  item.style.borderBottom="1px solid var(--line)";
+  item.style.padding="3px 0";
+  item.textContent=time+"  ·  "+message;
+  log.prepend(item);
+  while(log.children.length>5)log.lastChild.remove();
+}
+
+function setInteractionState(next){
+  if(next===interactionState)return;
+  interactionState=next;
+  $("interactionState").textContent=next;
+  logEvent(next.replaceAll("_"," ")+" DETECTED");
+}
+
+function setStatus(text,active=false){
+  $("status").textContent=text;
+  $("indicator").classList.toggle("active",active);
+}
+
+function resize(){
+  const r=$("camera").getBoundingClientRect();
+  const d=window.devicePixelRatio||1;
+  overlay.width=r.width*d;
+  overlay.height=r.height*d;
+  ctx.setTransform(d,0,0,d,0,0);
+}
+window.addEventListener("resize",resize);
+
+function mapPoints(lm){
+  const w=$("camera").clientWidth,h=$("camera").clientHeight;
+  const scale=Math.max(w/video.videoWidth,h/video.videoHeight);
+  const ox=(w-video.videoWidth*scale)/2;
+  const oy=(h-video.videoHeight*scale)/2;
+  return lm.map(p=>({
+    x:p.x*video.videoWidth*scale+ox,
+    y:p.y*video.videoHeight*scale+oy
+  }));
+}
+
+function drawHand(lm){
+  const p=mapPoints(lm);
+  const w=$("camera").clientWidth,h=$("camera").clientHeight;
+  ctx.clearRect(0,0,w,h);
+  const edges=[
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],[0,17]
+  ];
+  ctx.strokeStyle="rgba(201,243,107,.65)";
+  ctx.lineWidth=1.6;
+  edges.forEach(([a,b])=>{
+    ctx.beginPath();ctx.moveTo(p[a].x,p[a].y);
+    ctx.lineTo(p[b].x,p[b].y);ctx.stroke();
+  });
+  p.forEach((q,i)=>{
+    ctx.beginPath();ctx.arc(q.x,q.y,i===4||i===8?5:2,0,Math.PI*2);
+    ctx.fillStyle=i===4?"#83d8c5":i===8?"#c9f36b":"#edf2ed";
+    ctx.fill();
+  });
+  ctx.beginPath();
+  ctx.moveTo(p[4].x,p[4].y);
+  ctx.lineTo(p[8].x,p[8].y);
+  ctx.setLineDash([4,4]);
+  ctx.strokeStyle="#fff";ctx.stroke();ctx.setLineDash([]);
+}
+
+function drawWorldHand(world){
+  const canvas=$("worldCanvas");
+  const r=canvas.getBoundingClientRect();
+  const d=window.devicePixelRatio||1;
+  canvas.width=Math.max(1,Math.round(r.width*d));
+  canvas.height=Math.max(1,Math.round(r.height*d));
+  const c=canvas.getContext("2d");
+  c.setTransform(d,0,0,d,0,0);
+  c.clearRect(0,0,r.width,r.height);
+  if(!world||world.length<21){
+    $("worldStatus").textContent="3D DATA UNAVAILABLE";
+    return;
+  }
+  $("worldStatus").textContent="3D LANDMARKS ACTIVE";
+  // Plot the model's measured landmark orientation directly; do not animate/rotate the data.
+  const projected=world.map(v=>({x:v.x,y:-v.y,z:v.z}));
+  const xs=projected.map(p=>p.x),ys=projected.map(p=>p.y);
+  const span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys),.001);
+  const scale=Math.min(r.width,r.height)*.72/span;
+  const cx=r.width/2,cy=r.height/2;
+  const zMin=Math.min(...projected.map(p=>p.z)), zMax=Math.max(...projected.map(p=>p.z));
+  const zRange=Math.max(0.001,zMax-zMin);
+  const pts=projected.map(p=>({x:cx+p.x*scale,y:cy+p.y*scale,z:p.z}));
+  const edges=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+  c.lineWidth=2;c.strokeStyle="rgba(201,243,107,.7)";
+  edges.forEach(([a,b])=>{c.beginPath();c.moveTo(pts[a].x,pts[a].y);c.lineTo(pts[b].x,pts[b].y);c.stroke();});
+  pts.forEach((q,i)=>{
+    c.beginPath();c.arc(q.x,q.y,i===4||i===8?5:2.8,0,Math.PI*2);
+    c.fillStyle=i===4?"#83d8c5":i===8?"#c9f36b":"#edf2ed";c.fill();
+  });
+  c.setLineDash([4,4]);c.strokeStyle="#fff";c.beginPath();c.moveTo(pts[4].x,pts[4].y);c.lineTo(pts[8].x,pts[8].y);c.stroke();c.setLineDash([]);
+  c.fillStyle="#829087";c.font="10px sans-serif";c.fillText("MODEL WORLD LANDMARKS · FIXED VIEW",12,18);
+  c.fillText("Depth axis: Z",12,r.height-12);
+}
+
+function distance3D(a,b){
+  return Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+}
+
+function drawChart(){
+  const w=chart.width,h=chart.height;
+  g.clearRect(0,0,w,h);
+  g.strokeStyle="#29362f";g.lineWidth=1;
+  for(let i=1;i<4;i++){
+    g.beginPath();g.moveTo(42,i*h/4);g.lineTo(w-10,i*h/4);g.stroke();
+  }
+  const values=samples.slice(-120).map(s=>s.px);
+  if(values.length<2){
+    g.fillStyle="#829087";g.font="14px sans-serif";
+    g.fillText("Waiting for motion data…",45,130);return;
+  }
+  const max=Math.max(30,...values)*1.15;
+  g.beginPath();
+  values.forEach((v,i)=>{
+    const x=42+i*(w-55)/(values.length-1);
+    const y=10+(h-25)*(1-v/max);
+    i?g.lineTo(x,y):g.moveTo(x,y);
+  });
+  g.strokeStyle="#c9f36b";g.lineWidth=3;g.lineJoin="round";g.stroke();
+}
+
+
+function onResults(result){
+  if(!running)return;
+
+  const lm=result.multiHandLandmarks?.[0];
+
+  if(!lm){
+    $("tracking").textContent="SEARCHING";
+    $("gap").textContent="—";
+    $("normal").textContent="—";
+    $("confidence").textContent="—";
+    $("signalQuality").textContent="—";
+    $("gap3d").textContent="—";
+    $("worldStatus").textContent="SEARCHING FOR HAND";
+    worldPoints=null; smoothedWorld=null;
+    drawWorldHand(null);
+    setInteractionState("NO HAND");
+    previousFiltered=null;
+    return;
+  }
+
+  drawHand(lm);
+  const rawWorld=result.multiHandWorldLandmarks?.[0]||null;
+  if(rawWorld && rawWorld.length===21){
+    // Light temporal smoothing reduces visual jitter while retaining live movement.
+    smoothedWorld=smoothedWorld ? rawWorld.map((v,i)=>({
+      x:smoothedWorld[i].x*.65+v.x*.35,
+      y:smoothedWorld[i].y*.65+v.y*.35,
+      z:smoothedWorld[i].z*.65+v.z*.35
+    })) : rawWorld.map(v=>({x:v.x,y:v.y,z:v.z}));
+    worldPoints=smoothedWorld;
+  } else { worldPoints=null; smoothedWorld=null; }
+  drawWorldHand(worldPoints);
+  if(worldPoints && worldPoints[4] && worldPoints[8]){
+    const modelGap=distance3D(worldPoints[4],worldPoints[8])*1000;
+    const shownGap=calibrationScale ? modelGap*calibrationScale : modelGap;
+    $("gap3d").textContent=shownGap.toFixed(1);
+    $("gap3dUnit").textContent=calibrationScale ? "Calibrated estimate · mm · hand-scale reference" : "Model-estimated mm · uncalibrated";
+  }else{
+    $("gap3d").textContent="—";
+  }
+
+  const w=video.videoWidth,h=video.videoHeight;
+  const gap=Math.hypot(
+    (lm[4].x-lm[8].x)*w,
+    (lm[4].y-lm[8].y)*h
+  );
+
+  const palm=Math.hypot(
+    (lm[5].x-lm[17].x)*w,
+    (lm[5].y-lm[17].y)*h
+  );
+
+  if(!Number.isFinite(palm)||palm<8)return;
+
+  const normal=100*gap/palm;
+
+  if(lastRaw!==null &&
+     Math.abs(normal-lastRaw)>Math.max(35,lastRaw*.9)){
+    $("tracking").textContent="STABILISING";
+    return;
+  }
+
+  lastRaw=normal;
+  filtered=filtered===null?normal:filtered*.72+normal*.28;
+
+  const score=result.multiHandedness?.[0]?.classification?.[0]?.score;
+
+  $("gap").textContent=gap.toFixed(1);
+  $("normal").textContent=filtered.toFixed(1)+"%";
+  $("confidence").textContent=
+    Number.isFinite(score)?Math.round(score*100)+"%":"—";
+
+  $("tracking").textContent="HAND TRACKED";
+
+  const quality=Number.isFinite(score)?Math.round(score*100):null;
+  $("signalQuality").textContent=quality===null?"—":quality+"%";
+
+  let nextState;
+
+  if(filtered<=25){
+    nextState="PINCH";
+    releaseUntil=0;
+  }else if(interactionState==="PINCH" && filtered>25){
+    nextState="RELEASED";
+    releaseUntil=performance.now()+700;
+  }else if(performance.now()<releaseUntil){
+    nextState="RELEASED";
+  }else if(filtered>=65){
+    nextState="OPEN";
+  }else if(previousFiltered!==null && filtered<previousFiltered){
+    nextState="APPROACHING";
+  }else{
+    nextState="OPEN";
+  }
+
+  setInteractionState(nextState);
+  previousFiltered=filtered;
+
+  $("placeholder").style.display="none";
+
+  const now=performance.now();
+
+  if(now-lastSample>66){
+    samples.push({
+      time:(now-startTime)/1000,
+      px:filtered,
+      raw:gap,
+      palm:palm,
+      normal:normal,
+      gap3d:worldPoints?distance3D(worldPoints[4],worldPoints[8])*1000:null,
+      gap3dCalibrated:worldPoints&&calibrationScale?distance3D(worldPoints[4],worldPoints[8])*1000*calibrationScale:null,
+      palm3d:worldPoints?distance3D(worldPoints[5],worldPoints[17])*1000:null,
+      calibrationScale:calibrationScale,
+      thumbX:worldPoints?.[4]?.x??null,
+      thumbY:worldPoints?.[4]?.y??null,
+      thumbZ:worldPoints?.[4]?.z??null,
+      indexX:worldPoints?.[8]?.x??null,
+      indexY:worldPoints?.[8]?.y??null,
+      indexZ:worldPoints?.[8]?.z??null
+    });
+
+    if(samples.length>1800)samples.shift();
+
+    lastSample=now;
+    $("samples").textContent=samples.length;
+    drawChart();
+  }
+}
+
+
+async function loop(){
+  if(!running)return;
+  if(video.readyState>=2&&!busy){
+    busy=true;
+    try{await hands.send({image:video});}
+    catch(e){console.error(e);}
+    busy=false;
+  }
+  raf=requestAnimationFrame(loop);
+}
+
+
+async function start(){
+  $("start").disabled = true;
+  $("start").textContent = "Starting…";
+
+  try {
+    if(!window.Hands)
+      throw Error("Tracking library unavailable. Check internet.");
+
+    // Request the built-in laptop webcam
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "user" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+
+    video.srcObject = stream;
+    await video.play();
+    resize();
+
+    hands = new Hands({
+      locateFile: f =>
+        "https://cdn.jsdelivr.net/npm/@mediapipe/hands/" + f
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.65
+    });
+
+    hands.onResults(onResults);
+
+    running = true;
+    startTime = performance.now();
+    lastSample = 0;
+    filtered = null;
+    lastRaw = null;
+    samples = [];
+    worldPoints = null; smoothedWorld=null;
+    $("gap3d").textContent = "—";
+    $("worldStatus").textContent = "INITIALISING 3D";
+
+    $("samples").textContent = "0";
+    $("placeholder").style.display = "none";
+    $("stop").disabled = false;
+    $("tracking").textContent = "INITIALISING";
+
+    setStatus("CAPTURING", true);
+    loop();
+
+  } catch(e) {
+    alert(e.message || "Camera could not start.");
+
+    if(stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+
+    $("start").disabled = false;
+    $("start").textContent = "Start capture";
+    setStatus("STANDBY");
+  }
+}
+
+function stop(){
+  running=false;cancelAnimationFrame(raf);
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  stream=null;video.srcObject=null;
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  $("placeholder").style.display="grid";
+  $("stop").disabled=true;
+  $("start").disabled=false;
+  $("start").textContent="Start capture";
+  $("tracking").textContent="PAUSED";
+  setStatus("STANDBY");
+}
+
+function exportCSV(){
+  if(!samples.length){alert("Capture movement first.");return;}
+  const header=["time_seconds","thumb_index_gap_px","palm_width_px","normalised_gap_pct_palm","model_3d_gap_mm_uncalibrated","calibrated_3d_gap_mm","model_palm_width_mm","calibration_scale_factor","thumb_x_m","thumb_y_m","thumb_z_m","index_x_m","index_y_m","index_z_m"];
+  const rows=samples.map(s=>[
+    s.time.toFixed(3),s.raw.toFixed(2),s.palm.toFixed(2),s.normal.toFixed(2),
+    s.gap3d===null?"":s.gap3d.toFixed(2),
+    s.gap3dCalibrated===null?"":s.gap3dCalibrated.toFixed(2),
+    s.palm3d===null?"":s.palm3d.toFixed(2),
+    s.calibrationScale===null?"":s.calibrationScale,
+    s.thumbX??"",s.thumbY??"",s.thumbZ??"",s.indexX??"",s.indexY??"",s.indexZ??""
+  ]);
+  // UTF-8 BOM improves compatibility with spreadsheet apps; CSV remains plain data.
+  const csv="\uFEFF"+[header,...rows].map(row=>row.join(",")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="VAVIN_3D_motion_data.csv";document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
+$("calibrate").addEventListener("click",()=>{
+  const known=Number($("palmReference").value);
+  if(!Number.isFinite(known)||known<30||known>150){alert("Enter your measured palm width in millimetres (30–150 mm). Use a ruler.");return;}
+  if(!worldPoints){alert("Start capture and keep your hand visible before calibrating.");return;}
+  const modelPalm=distance3D(worldPoints[5],worldPoints[17])*1000;
+  if(!Number.isFinite(modelPalm)||modelPalm<=0){alert("Could not measure palm landmarks. Try again with your hand clearly visible.");return;}
+  calibrationScale=known/modelPalm;
+  $("calibrationStatus").textContent="Scale reference applied. This is a hand-based estimate, not independently verified accuracy.";
+  const modelGap=distance3D(worldPoints[4],worldPoints[8])*1000;
+  $("gap3d").textContent=(modelGap*calibrationScale).toFixed(1);
+  $("gap3dUnit").textContent="Calibrated estimate · mm · hand-scale reference";
+});
+$("clearCalibration").addEventListener("click",()=>{
+  calibrationScale=null;
+  $("calibrationStatus").textContent="Calibration reset. Enter a measured palm width to apply a scale reference.";
+  $("gap3dUnit").textContent="Model-estimated mm · uncalibrated";
+});
+
+$("start").addEventListener("click",start);
+$("stop").addEventListener("click",stop);
+
+const exportBtn=document.createElement("button");
+exportBtn.textContent="Export CSV";
+exportBtn.className="secondary";
+exportBtn.style.cssText="position:fixed;right:20px;bottom:18px;z-index:10";
+exportBtn.onclick=exportCSV;
+document.body.appendChild(exportBtn);
+
+setInterval(()=>{
+  if(running){
+    const s=Math.floor((performance.now()-startTime)/1000);
+    $("duration").textContent=
+      String(Math.floor(s/60)).padStart(2,"0")+":"+
+      String(s%60).padStart(2,"0");
+  }
+},250);
+drawChart();
+</script>
+</body>
+</html>
